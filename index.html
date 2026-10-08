@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Provenant: see the AI labels a file carries</title>
+<meta name="description" content="Check the provenance labels in a photo or video, entirely in your browser. No upload, account or server.">
+<meta name="theme-color" content="#0e7490">
+<link rel="canonical" href="https://cig13zs.github.io/provenant/">
+<style>
+  :root{
+    --bg:#fbfbfa; --panel:#fff; --ink:#18181b; --muted:#5d5d66; --line:#e6e6e3;
+    --accent:#0e7490; --accent-soft:#cffafe; --warn:#b91c1c; --warn-soft:#fee2e2;
+    --code:#f4f4f2; --shadow:0 1px 3px rgba(0,0,0,.06),0 12px 32px -12px rgba(0,0,0,.14);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0e0e10; --panel:#161619; --ink:#f2f2f3; --muted:#a1a1aa; --line:#26262b;
+      --accent:#22d3ee; --accent-soft:#0b2b31; --warn:#f87171; --warn-soft:#3a1414;
+      --code:#1b1b1f; --shadow:0 1px 3px rgba(0,0,0,.5),0 16px 40px -16px rgba(0,0,0,.7);
+    }
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:720px;margin:0 auto;padding:0 24px}
+  a{color:var(--accent)}
+  a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible,.drop:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+  .skip-link{position:fixed;left:16px;top:12px;z-index:10;padding:8px 12px;border-radius:8px;
+    background:var(--ink);color:var(--bg);text-decoration:none;transform:translateY(-160%)}
+  .skip-link:focus{transform:translateY(0)}
+  code,.raw{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em}
+  header{padding:80px 0 8px;text-align:center}
+  .eyebrow{display:inline-block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--accent);background:var(--accent-soft);padding:5px 11px;border-radius:999px;font-weight:600}
+  h1{font-size:clamp(38px,7vw,58px);line-height:1.05;letter-spacing:-.03em;margin:20px 0 0;font-weight:700}
+  .tagline{font-size:clamp(17px,2.4vw,20px);color:var(--muted);margin:16px auto 0;max-width:32em}
+  .tabs{display:flex;gap:8px;border-bottom:1px solid var(--line);margin:42px 0 0}
+  .tab{font:inherit;font-weight:650;color:var(--muted);background:none;border:0;border-bottom:3px solid transparent;
+    padding:10px 18px;cursor:pointer;min-height:48px}
+  .tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+  .tab:hover{color:var(--ink)}
+  [hidden]{display:none!important}
+  .drop{display:block;margin:28px auto 0;border:2px dashed var(--line);border-radius:16px;background:var(--panel);
+    padding:44px 20px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+  .drop:hover,.drop.over,.drop:focus-within{border-color:var(--accent);background:var(--accent-soft)}
+  .drop .big{font-size:18px;font-weight:600}
+  .drop .sub{display:block;color:var(--muted);font-size:14px;margin-top:6px}
+  .drop input{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+    clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .compare-picks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .compare-picks .drop{width:100%;min-height:172px;padding:30px 14px;margin-top:28px}
+  .compare-picks .drop .big{font-size:16px}
+  .compare-picks .drop .sub{overflow-wrap:anywhere}
+  .status{margin:18px 0 0;color:var(--muted);font-size:14px}
+  .results{display:grid;gap:16px;margin:24px 0 0}
+  .result-card,.diff-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:22px;box-shadow:var(--shadow);min-width:0;overflow-wrap:anywhere}
+  .filename{font-weight:650;overflow-wrap:anywhere;margin:0 0 8px}
+  .file-meta{color:var(--muted);font-size:13px;margin:0 0 13px}
+  .verdict{display:inline-block;border-radius:8px;padding:5px 10px;font-size:15px;font-weight:700;
+    line-height:1.45;background:var(--accent-soft);color:var(--accent)}
+  .verdict.warn{background:var(--warn-soft);color:var(--warn)}
+  h2{font-size:22px;letter-spacing:-.015em;margin:0 0 12px;font-weight:650}
+  h3{font-size:17px;margin:22px 0 8px;font-weight:650}
+  p{margin:0 0 14px}
+  .muted{color:var(--muted)}
+  .signals{list-style:none;padding:0;margin:18px 0 0}
+  .signal{padding:12px 0;border-top:1px solid var(--line)}
+  .signal-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .signal-name{font-weight:650}
+  .signal-state{font-size:13px;font-weight:650;white-space:nowrap;color:var(--muted)}
+  .signal-state.found{color:var(--accent)}
+  .signal p{font-size:14px;color:var(--muted);margin:4px 0 0;overflow-wrap:anywhere}
+  .signal .value{font-size:13px;background:var(--code);padding:8px 10px;border-radius:6px;
+    margin-top:7px;white-space:pre-wrap;overflow-wrap:anywhere}
+  .notes{margin:16px 0 0;padding-left:21px;font-size:14px;color:var(--muted)}
+  .notes li{margin:5px 0}
+  .links{display:flex;flex-wrap:wrap;gap:8px 16px;margin:14px 0 0;font-size:14px}
+  .posting{background:var(--accent-soft);border-radius:10px;padding:14px 16px;margin-top:20px}
+  .posting h3{margin:0 0 8px;font-size:15px}
+  .posting p{margin:8px 0 0;font-size:14px}
+  details{margin-top:18px;font-size:14px}
+  summary{cursor:pointer;color:var(--accent);font-weight:600}
+  .raw{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--code);padding:12px;border-radius:8px;
+    max-height:300px;overflow:auto;margin:8px 0 0}
+  .table-scroll{overflow-x:auto;margin-top:15px}
+  table{border-collapse:collapse;table-layout:fixed;width:100%;font-size:14px;min-width:600px}
+  th,td{text-align:left;vertical-align:top;padding:10px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+  th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  th:first-child{width:22%}
+  th:nth-child(2){width:16%}
+  th:nth-child(3),th:nth-child(4){width:31%}
+  th:first-child,td:first-child{overflow-wrap:normal}
+  td .raw{font-size:12px;max-height:130px}
+  .diff-state{display:inline-block;white-space:nowrap;border-radius:6px;padding:2px 7px;background:var(--code);font-weight:650;font-size:12px}
+  .diff-state.stripped{background:var(--warn-soft);color:var(--warn)}
+  .diff-state.added,.diff-state.kept{background:var(--accent-soft);color:var(--accent)}
+  section.explainer{padding:44px 0;border-top:1px solid var(--line);margin-top:56px}
+  section.explainer h2:not(:first-child){margin-top:29px}
+  footer{padding:44px 0 72px;text-align:center;color:var(--muted);font-size:14px}
+  .kofi{display:inline-block;margin:0 0 20px;padding:12px 22px;border-radius:10px;background:#FF5E5B;
+    color:#18181b;font-weight:650;font-size:15px;text-decoration:none;box-shadow:0 4px 16px rgba(255,94,91,.35);
+    transition:transform .12s ease,background .12s ease}
+  .kofi:hover{background:#ef4b48;transform:translateY(-1px)}
+  .pillnote{display:inline-block;margin-top:22px;font-size:13px;color:var(--muted)}
+  @media(max-width:520px){
+    .diff-card table,.diff-card tbody,.diff-card tr,.diff-card td{display:block;width:auto;min-width:0}
+    .diff-card thead{display:none}
+    .diff-card tr{padding:10px 0;border-bottom:1px solid var(--line)}
+    .diff-card td{border:0;padding:3px 0;overflow-wrap:anywhere}
+    .diff-card td:nth-child(1){font-weight:650}
+    .diff-card td:nth-child(3)::before{content:"Before: ";font-weight:650;color:var(--muted)}
+    .diff-card td:nth-child(4)::before{content:"After: ";font-weight:650;color:var(--muted)}
+  }
+  @media(max-width:520px){header{padding-top:58px}.compare-picks{grid-template-columns:1fr}.compare-picks .drop{margin-top:14px;min-height:130px;padding:22px 14px}.result-card,.diff-card{padding:17px}}
+  @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="wrap">
+<header>
+  <span class="eyebrow">Free &amp; open source</span>
+  <h1>Provenant</h1>
+  <p class="tagline">See what AI labels a photo or video carries. Nothing leaves your browser.</p>
+</header>
+<main id="main">
+  <div class="tabs" role="tablist" aria-label="Tool mode">
+    <button class="tab" id="check-tab" role="tab" type="button" aria-selected="true" aria-controls="check-panel">Check</button>
+    <button class="tab" id="compare-tab" role="tab" type="button" aria-selected="false" aria-controls="compare-panel" tabindex="-1">Compare</button>
+  </div>
+  <div id="check-panel" role="tabpanel" aria-labelledby="check-tab">
+    <label class="drop" id="check-drop">
+      <span class="big">Drop files here, or click to choose</span>
+      <span class="sub" id="check-help">Photos, video or audio · multiple files welcome · nothing is uploaded</span>
+      <input type="file" id="file" accept="image/*,video/*,audio/*" multiple aria-describedby="check-help">
+    </label>
+    <p class="status" id="check-status" role="status" aria-live="polite">Choose a file to see its labels.</p>
+    <div class="results" id="results" aria-live="polite"></div>
+  </div>
+  <div id="compare-panel" role="tabpanel" aria-labelledby="compare-tab" hidden>
+    <div class="compare-picks">
+      <label class="drop" id="before-drop">
+        <span class="big">Before</span>
+        <span class="sub" id="before-name">Drop a file here, or click to choose</span>
+        <input type="file" id="before-file" accept="image/*,video/*,audio/*" aria-label="Before file">
+      </label>
+      <label class="drop" id="after-drop">
+        <span class="big">After</span>
+        <span class="sub" id="after-name">Drop a file here, or click to choose</span>
+        <input type="file" id="after-file" accept="image/*,video/*,audio/*" aria-label="After file">
+      </label>
+    </div>
+    <p class="status" id="compare-status" role="status" aria-live="polite">Choose a before and an after file to see which labels survived.</p>
+    <div id="compare-result" aria-live="polite"></div>
+  </div>
+
+  <section class="explainer">
+    <h2>What are these labels?</h2>
+    <p class="muted">Content Credentials (C2PA) and IPTC/XMP can carry a file's claimed origin or edits. Some apps also leave a generator name in ordinary metadata. Provenant shows those clues and where each came from. It does not validate a credential's signature.</p>
+    <h2>What if there are no labels?</h2>
+    <p class="muted">A missing label does not prove human creation. Screenshots, re-uploads and editors can remove labels. Compare two versions here to see what survived.</p>
+    <h2>What about SynthID?</h2>
+    <p class="muted">SynthID is an invisible watermark. It may survive when metadata does not, but it cannot be read here offline. Use an official checker linked in the result card to check for it.</p>
+    <p class="muted">Everything runs in this tab. Open the Network tab and watch: no uploads.</p>
+  </section>
+</main>
+<footer>
+  <a class="kofi" href="https://ko-fi.com/jju1s" target="_blank" rel="noopener noreferrer">☕ Support Provenant on Ko-fi</a>
+  <p>Free, and it stays free. There is no paid tier.<br>MIT licensed. Tip jar: <a href="https://ko-fi.com/jju1s" target="_blank" rel="noopener noreferrer">ko-fi.com/jju1s</a>.</p>
+  <p class="pillnote">Your files stay in your browser.</p>
+</footer>
+</div>
+<script src="provenance.js"></script>
+<script>
+(function () {
+  'use strict';
+  var LIMIT = 1024 * 1024 * 1024;
+  var SLICE = 64 * 1024 * 1024;
+  var checkTab = document.getElementById('check-tab');
+  var compareTab = document.getElementById('compare-tab');
+  var checkPanel = document.getElementById('check-panel');
+  var comparePanel = document.getElementById('compare-panel');
+  var results = document.getElementById('results');
+  var checkStatus = document.getElementById('check-status');
+  var compareStatus = document.getElementById('compare-status');
+  var compareResult = document.getElementById('compare-result');
+  var beforeFile = null;
+  var afterFile = null;
+  var checkRun = 0;
+  var compareRun = 0;
+
+  function el(tag, className, value) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (value !== undefined) node.textContent = String(value);
+    return node;
+  }
+  function textValue(value) {
+    if (value === null || value === undefined) return '—';
+    return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  }
+  function link(url, label) {
+    try {
+      var parsed = new URL(url);
+      if (parsed.protocol !== 'https:') return null;
+      var node = el('a', '', label);
+      node.href = parsed.href;
+      node.target = '_blank';
+      node.rel = 'noopener noreferrer';
+      return node;
+    } catch (_) { return null; }
+  }
+  function showTab(tab) {
+    var isCheck = tab === checkTab;
+    checkTab.setAttribute('aria-selected', isCheck ? 'true' : 'false');
+    compareTab.setAttribute('aria-selected', isCheck ? 'false' : 'true');
+    checkTab.tabIndex = isCheck ? 0 : -1;
+    compareTab.tabIndex = isCheck ? -1 : 0;
+    checkPanel.hidden = !isCheck;
+    comparePanel.hidden = isCheck;
+  }
+  checkTab.addEventListener('click', function () { showTab(checkTab); });
+  compareTab.addEventListener('click', function () { showTab(compareTab); });
+  [checkTab, compareTab].forEach(function (tab) {
+    tab.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        var next = e.key === 'Home' ? checkTab : e.key === 'End' ? compareTab : tab === checkTab ? compareTab : checkTab;
+        showTab(next);
+        next.focus();
+      }
+    });
+  });
+  function bindDrop(id, inputId, consume) {
+    var drop = document.getElementById(id);
+    var input = document.getElementById(inputId);
+    ['dragenter', 'dragover'].forEach(function (eventName) {
+      drop.addEventListener(eventName, function (e) { e.preventDefault(); drop.classList.add('over'); });
+    });
+    ['dragleave', 'drop'].forEach(function (eventName) {
+      drop.addEventListener(eventName, function (e) { e.preventDefault(); drop.classList.remove('over'); });
+    });
+    drop.addEventListener('drop', function (e) {
+      if (e.dataTransfer && e.dataTransfer.files.length) consume(e.dataTransfer.files);
+    });
+    input.addEventListener('change', function () {
+      if (input.files.length) consume(input.files);
+      input.value = '';
+    });
+  }
+  function read(file) {
+    if (file.size <= LIMIT) return file.arrayBuffer().then(function (buffer) {
+      return window.Provenant.inspect(new Uint8Array(buffer), file.name);
+    });
+    return file.slice(0, SLICE).arrayBuffer().then(function (head) {
+      return file.slice(file.size - SLICE).arrayBuffer().then(function (tail) {
+        var report = window.Provenant.inspectParts(new Uint8Array(head), new Uint8Array(tail), file.name);
+        return report;
+      });
+    });
+  }
+  function signalTitle(signal) {
+    if (signal.source === 'c2pa') return 'Content Credentials (C2PA)';
+    if (signal.source === 'xmp') return 'IPTC/XMP';
+    if (signal.source === 'watermark') return 'Invisible watermark';
+    if (signal.source === 'meta') {
+      var bits = signal.id.split(':');
+      return bits.length > 2 ? 'Metadata · ' + bits.slice(2).join(':') : 'Metadata';
+    }
+    return signal.source || signal.id;
+  }
+  function addSignal(list, signal) {
+    var item = el('li', 'signal');
+    var head = el('div', 'signal-head');
+    head.appendChild(el('span', 'signal-name', signalTitle(signal)));
+    var state = signal.found === null ? "Can't check" : signal.found ? 'Found' : 'Not found';
+    head.appendChild(el('span', 'signal-state' + (signal.found ? ' found' : ''), state));
+    item.appendChild(head);
+    if (signal.detail) item.appendChild(el('p', '', signal.detail));
+    if (signal.source === 'c2pa' && signal.verifyUrl) {
+      var verifyLink = link(signal.verifyUrl, 'Check the signature with Content Credentials');
+      if (verifyLink) item.appendChild(verifyLink);
+    }
+    if (signal.found && typeof signal.value === 'string' && signal.value !== '') {
+      item.appendChild(el('div', 'value raw', textValue(signal.value)));
+    }
+    list.appendChild(item);
+  }
+  function addLinks(parent, items) {
+    if (!Array.isArray(items) || !items.length) return;
+    var links = el('div', 'links');
+    items.forEach(function (item) {
+      var anchor = link(item.url, item.label);
+      if (anchor) links.appendChild(anchor);
+    });
+    if (links.childNodes.length) parent.appendChild(links);
+  }
+  function renderReport(file, report) {
+    var card = el('article', 'result-card');
+    card.appendChild(el('p', 'filename', report.filename || file.name));
+    card.appendChild(el('p', 'file-meta', (report.format || 'Unknown format') + ' · ' + (file.size / 1048576).toFixed(2) + ' MB'));
+    var caution = report.verdict === 'conflict' || report.verdict === 'ai_generated' || report.verdict === 'ai_edited' || report.verdict === 'ai_hint';
+    card.appendChild(el('div', 'verdict' + (caution ? ' warn' : ''), report.headline));
+    var signals = el('ul', 'signals');
+    (report.signals || []).forEach(function (signal) { addSignal(signals, signal); });
+    card.appendChild(signals);
+    if (Array.isArray(report.notes) && report.notes.length) {
+      var notes = el('ul', 'notes');
+      report.notes.forEach(function (note) { notes.appendChild(el('li', '', note)); });
+      card.appendChild(notes);
+    }
+    addLinks(card, report.watermarkLinks);
+    if (['ai_generated', 'ai_edited', 'ai_hint'].indexOf(report.verdict) !== -1 && Array.isArray(report.creatorNote) && report.creatorNote.length) {
+      var posting = el('div', 'posting');
+      posting.appendChild(el('h3', '', 'Posting this?'));
+      report.creatorNote.forEach(function (item) {
+        var row = el('p');
+        row.appendChild(el('strong', '', item.platform + ': '));
+        row.appendChild(document.createTextNode(item.text + ' '));
+        var anchor = link(item.url, 'Official guidance ↗');
+        if (anchor) row.appendChild(anchor);
+        posting.appendChild(row);
+      });
+      card.appendChild(posting);
+    }
+    var details = el('details');
+    details.appendChild(el('summary', '', 'Raw details'));
+    details.appendChild(el('pre', 'raw', JSON.stringify(report, null, 2)));
+    card.appendChild(details);
+    return card;
+  }
+  function errorCard(file, err) {
+    var card = el('article', 'result-card');
+    card.appendChild(el('p', 'filename', file.name));
+    card.appendChild(el('p', '', "Couldn't read this file: " + (err && err.message ? err.message : String(err))));
+    return card;
+  }
+  async function checkFiles(fileList) {
+    var files = Array.from(fileList);
+    var run = ++checkRun;
+    results.replaceChildren();
+    checkStatus.textContent = 'Reading ' + files.length + (files.length === 1 ? ' file…' : ' files…');
+    for (var i = 0; i < files.length; i++) {
+      if (run !== checkRun) return;
+      var file = files[i];
+      checkStatus.textContent = 'Reading ' + file.name + ' (' + (i + 1) + ' of ' + files.length + ')…';
+      await new Promise(function (resolve) { setTimeout(resolve, 0); });
+      try {
+        var report = await read(file);
+        if (run !== checkRun) return;
+        results.appendChild(renderReport(file, report));
+      } catch (err) {
+        if (run !== checkRun) return;
+        results.appendChild(errorCard(file, err));
+      }
+    }
+    checkStatus.textContent = 'Checked ' + files.length + (files.length === 1 ? ' file.' : ' files.');
+  }
+  function diffTable(diff) {
+    var card = el('article', 'diff-card');
+    card.appendChild(el('h2', '', 'What changed'));
+    card.appendChild(el('p', 'muted', diff.summary || 'Comparison complete.'));
+    var scroll = el('div', 'table-scroll');
+    var table = el('table');
+    var head = el('thead');
+    var headRow = el('tr');
+    ['Signal', 'Status', 'Before', 'After'].forEach(function (title) { headRow.appendChild(el('th', '', title)); });
+    head.appendChild(headRow);
+    table.appendChild(head);
+    var body = el('tbody');
+    (diff.entries || []).forEach(function (entry) {
+      var row = el('tr');
+      row.appendChild(el('td', '', signalTitle(entry)));
+      var status = el('td');
+      status.appendChild(el('span', 'diff-state ' + entry.status, entry.status));
+      row.appendChild(status);
+      row.appendChild(el('td', '', shortDetail(entry.beforeDetail)));
+      row.appendChild(el('td', '', shortDetail(entry.afterDetail)));
+      body.appendChild(row);
+    });
+    table.appendChild(body);
+    scroll.appendChild(table);
+    card.appendChild(scroll);
+    card.appendChild(el('p', 'status', "“Absent” means neither file had that label. Invisible watermarks can’t be checked here, so they stay unknown."));
+    return card;
+  }
+  function shortDetail(text) {
+    if (!text) return '—';
+    text = String(text).replace(/\s*Signature not checked here\.?/, '');
+    return text.length > 140 ? text.slice(0, 137) + '…' : text;
+  }
+  async function compareFiles() {
+    var run = ++compareRun;
+    compareResult.replaceChildren();
+    if (!beforeFile || !afterFile) {
+      compareStatus.textContent = 'Choose a before and an after file to see which labels survived.';
+      return;
+    }
+    compareStatus.textContent = 'Reading ' + beforeFile.name + '…';
+    await new Promise(function (resolve) { setTimeout(resolve, 0); });
+    try {
+      var before = await read(beforeFile);
+      if (run !== compareRun) return;
+      compareStatus.textContent = 'Reading ' + afterFile.name + '…';
+      var after = await read(afterFile);
+      if (run !== compareRun) return;
+      var diff = window.Provenant.compare(before, after);
+      compareResult.appendChild(diffTable(diff));
+      compareStatus.textContent = 'Compared ' + beforeFile.name + ' and ' + afterFile.name + '.';
+    } catch (err) {
+      if (run !== compareRun) return;
+      compareStatus.textContent = "Couldn't read this file: " + (err && err.message ? err.message : String(err));
+    }
+  }
+  bindDrop('check-drop', 'file', checkFiles);
+  bindDrop('before-drop', 'before-file', function (files) {
+    beforeFile = files[0];
+    document.getElementById('before-name').textContent = beforeFile.name;
+    compareFiles();
+  });
+  bindDrop('after-drop', 'after-file', function (files) {
+    afterFile = files[0];
+    document.getElementById('after-name').textContent = afterFile.name;
+    compareFiles();
+  });
+})();
+</script>
+</body>
+</html>
