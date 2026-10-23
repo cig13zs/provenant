@@ -82,6 +82,33 @@ test('active last manifest only, not an earlier AI ingredient',()=>{
   const store=F.superbox('c2pa',[child(ai),child(camera)]);
   const r=P.inspect(F.jpegWithStore(store));assert.equal(r.verdict,'camera_signed');
 });
+test('AI claim in a parent ingredient manifest carries to the active manifest',()=>{
+  // Shape of a ChatGPT/DALL-E file: the generator's manifest is the parent of a "converted" one.
+  const made=F.testManifest('urn:uuid:made',[['c2pa.created','trainedAlgorithmicMedia']],[],{name:'DALL-E'});
+  const converted=F.testManifest('urn:uuid:converted',[['c2pa.converted']],[{manifest:'urn:uuid:made',relationship:'parentOf',title:'image.png'}],{name:'ChatGPT'});
+  const r=P.inspect(F.jpegWithStore(F.superbox('c2pa',[made,converted]))),s=source(r,'c2pa');
+  assert.equal(r.verdict,'ai_generated');assert.equal(s.value.generator,'ChatGPT');
+  assert.deepEqual(s.value.inherited.map(i=>[i.kind,i.generator,i.action]),[['generated','DALL-E','c2pa.created']]);
+  assert.match(s.detail,/AI claims in ingredient manifests: DALL-E \(c2pa\.created, AI-generated\) via parentOf "image\.png"/);
+  const grand=F.testManifest('urn:uuid:resized',[['c2pa.resized']],[{manifest:'urn:uuid:converted',relationship:'parentOf',title:'b.jpg'}]);
+  assert.equal(P.inspect(F.jpegWithStore(F.superbox('c2pa',[made,converted,grand]))).verdict,'ai_generated');
+});
+test('AI component ingredient or AI edit action means edited with AI',()=>{
+  const part=F.testManifest('urn:uuid:part',[['c2pa.created','trainedAlgorithmicMedia']]);
+  const doc=F.testManifest('urn:uuid:doc',[['c2pa.placed']],[{manifest:'urn:uuid:part',relationship:'componentOf',title:'sky'}]);
+  assert.equal(P.inspect(F.jpegWithStore(F.superbox('c2pa',[part,doc]))).verdict,'ai_edited');
+  for(const action of ['c2pa.edited','c2pa.placed'])assert.equal(P.inspect(F.jpegWithStore(F.testStore('trainedAlgorithmicMedia',action))).verdict,'ai_edited');
+  const opened=F.testManifest('urn:uuid:open',[['c2pa.opened','trainedAlgorithmicMedia']]);
+  const child=F.testManifest('urn:uuid:child',[['c2pa.resized']],[{manifest:'urn:uuid:open',relationship:'parentOf'}]);
+  assert.equal(P.inspect(F.jpegWithStore(F.superbox('c2pa',[opened,child]))).verdict,'credentials_no_ai_claim');
+});
+test('ingredient links tolerate cycles, missing manifests and v1 c2pa_manifest references',()=>{
+  const a=F.testManifest('urn:uuid:a',[['c2pa.created','trainedAlgorithmicMedia']],[{manifest:'urn:uuid:b',relationship:'parentOf'}]);
+  const b=F.testManifest('urn:uuid:b',[['c2pa.converted']],[{manifest:'urn:uuid:a',relationship:'parentOf'},{manifest:'urn:uuid:gone',relationship:'parentOf'}]);
+  const r=P.inspect(F.jpegWithStore(F.superbox('c2pa',[a,b])));assert.equal(r.verdict,'ai_generated');assert.equal(source(r,'c2pa').value.inherited.length,1);
+  const v1=F.testManifest('urn:uuid:v1',[['c2pa.converted']],[{manifest:'urn:uuid:a',relationship:'parentOf',key:'c2pa_manifest'}]);
+  assert.equal(P.inspect(F.jpegWithStore(F.superbox('c2pa',[F.testManifest('urn:uuid:a',[['c2pa.created','trainedAlgorithmicMedia']]),v1]))).verdict,'ai_generated');
+});
 test('APP11 packet sequence is sorted and missing packet remains present but unparsed',()=>{
   const original=read('CA.jpg');let p=2;const parts=[],other=[];
   while(p+4<original.length&&original[p]===255&&original[p+1]!==218){const n=original.readUInt16BE(p+2)+2;(original[p+1]===235?parts:other).push(original.subarray(p,p+n));p+=n;}
