@@ -28,6 +28,7 @@ Actual output from the first command:
 ```text
 test/fixtures/C.jpg
 Has Content Credentials, no AI claim
+Why: Content Credentials are present (generator: make_test_images/0.33.1 c2pa-rs/0.33.1), but none of their actions claim AI generation or AI editing.
   c2pa [found]: Generator: make_test_images/0.33.1 c2pa-rs/0.33.1; signer organization: C2PA Test Signing Cert; signer CN: C2PA Signer; actions: c2pa.created (computer-generated (not AI-trained)); ingredients: 0. Signature not checked here.
   xmp [not found]: IPTC/XMP provenance fields not found.
   meta [not found]: Generator metadata not found.
@@ -51,7 +52,7 @@ The CLI exits 0 after processing a request, including explicit per-file read err
 
 For an AI label or hint, the page and CLI also link to official YouTube, TikTok and Meta disclosure guidance. That guidance describes platform rules; it is not legal advice.
 
-The shared API works in Node (`require('./provenance')`) and the browser (`window.Provenant`): `inspect(bytes, filename)` returns a report and `compare(beforeReport, afterReport)` returns a diff. Neither function does I/O. Malformed credentials remain marked present, with a parsing error.
+The shared API works in Node (`require('./provenance')`) and the browser (`window.Provenant`): `inspect(bytes, filename)` returns a report (with `verdict`, `headline` and a one-sentence `reason` naming the field that decided the verdict) and `compare(beforeReport, afterReport)` returns a diff. Neither function does I/O. Malformed credentials remain marked present, with a parsing error.
 
 ## What it can't do
 
