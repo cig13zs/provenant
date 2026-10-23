@@ -62,6 +62,7 @@
   .verdict{display:inline-block;border-radius:8px;padding:5px 10px;font-size:15px;font-weight:700;
     line-height:1.45;background:var(--accent-soft);color:var(--accent)}
   .verdict.warn{background:var(--warn-soft);color:var(--warn)}
+  .reason{margin:10px 0 0;font-size:14px;color:var(--muted)}
   h2{font-size:22px;letter-spacing:-.015em;margin:0 0 12px;font-weight:650}
   h3{font-size:17px;margin:22px 0 8px;font-weight:650}
   p{margin:0 0 14px}
@@ -304,6 +305,7 @@
     card.appendChild(el('p', 'file-meta', (report.format || 'Unknown format') + ' · ' + (file.size / 1048576).toFixed(2) + ' MB'));
     var caution = report.verdict === 'conflict' || report.verdict === 'ai_generated' || report.verdict === 'ai_edited' || report.verdict === 'ai_hint';
     card.appendChild(el('div', 'verdict' + (caution ? ' warn' : ''), report.headline));
+    if (report.reason) card.appendChild(el('p', 'reason', report.reason));
     var signals = el('ul', 'signals');
     (report.signals || []).forEach(function (signal) { addSignal(signals, signal); });
     card.appendChild(signals);

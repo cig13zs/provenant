@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 const run = (...args) => spawnSync(process.execPath,[path.join(__dirname,'cli.js'),...args],{cwd:__dirname,encoding:'utf8',windowsHide:true});
-test('CLI prints the exact verdict and signature caveat',()=>{const r=run('test/fixtures/C.jpg');assert.equal(r.status,0);assert.match(r.stdout,/Has Content Credentials, no AI claim/);assert.match(r.stdout,/Signature not checked here/);});
+test('CLI prints the exact verdict and signature caveat',()=>{const r=run('test/fixtures/C.jpg');assert.equal(r.status,0);assert.match(r.stdout,/Has Content Credentials, no AI claim\nWhy: Content Credentials are present/);assert.match(r.stdout,/Signature not checked here/);});
 test('CLI JSON parses, one report and multiple reports',()=>{let r=run('test/fixtures/xmp-ai.jpg','--json');assert.equal(r.status,0);assert.equal(JSON.parse(r.stdout).verdict,'ai_generated');r=run('--json','test/fixtures/plain.jpg','test/fixtures/sd.png');assert.equal(JSON.parse(r.stdout).length,2);});
 test('CLI compare prints table and JSON diff',()=>{const args=['compare','test/fixtures/C.jpg','test/fixtures/stripped.jpg'];let r=run(...args);assert.equal(r.status,0);assert.match(r.stdout,/1 of 1 labels were stripped/);assert.match(r.stdout,/c2pa\tstripped/);r=run(...args,'--json');assert.equal(JSON.parse(r.stdout).stripped,1);});
 test('CLI bad arguments exit 2',()=>{for(const args of [[],['--wrong'],['compare'],['compare','a'],['compare','a','b','c']]){const r=run(...args);assert.equal(r.status,2);assert.match(r.stderr,/Usage:/);}});

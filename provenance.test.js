@@ -172,3 +172,22 @@ test('never throws on 200 seeded random buffers and 10 truncations of every fixt
   for(let i=0;i<200;i++){const b=Buffer.alloc(rand()%4096);for(let j=0;j<b.length;j++)b[j]=rand()&255;assert.doesNotThrow(()=>P.inspect(b));}
   for(const f of fixtures){const b=read(f);for(let i=0;i<10;i++)assert.doesNotThrow(()=>P.inspect(b.subarray(0,rand()%(b.length+1)),f));}
 });
+test('each verdict comes with a reason that names what decided it',()=>{
+  const cases=[
+    [inspect('C.jpg'),/none of their actions claim AI/],
+    [inspect('corrupt.jpg'),/could not be read/],
+    [inspect('xmp-ai.jpg'),/Digital Source Type is trainedAlgorithmicMedia \(creator tool: Test Tool\)\. This label is not signed/],
+    [inspect('xmp-camera.jpg'),/unsigned IPTC\/XMP value, camera \(digitalCapture\)/],
+    [inspect('sd.png'),/PNG field "parameters"/],
+    [inspect('plain.jpg'),/^No Content Credentials, IPTC\/XMP source type or generator metadata were found\.$/],
+    [P.inspect(F.jpegWithStore(F.testStore('trainedAlgorithmicMedia'))),/record c2pa\.created with source type trainedAlgorithmicMedia \(generator: Fixture Tool\)/],
+    [P.inspect(F.jpegWithStore(F.testStore('trainedAlgorithmicMedia','c2pa.edited'))),/record c2pa\.edited with source type trainedAlgorithmicMedia/],
+    [P.inspect(F.jpegWithStore(F.testStore('digitalCapture'))),/camera capture \(digitalCapture\)\. The signature and the camera are not verified here/],
+    [P.inspect(F.withXmp(F.jpegWithStore(F.testStore('digitalCapture')),'trainedAlgorithmicMedia')),/camera capture.*XMP source type says AI-generated/],
+    [P.inspect(F.png([F.chunk('tEXt',Buffer.from('Software\0Photo Editor'))])),/metadata found names no known AI tool/]
+  ];
+  for(const [r,re] of cases)assert.match(r.reason,re,r.verdict);
+  const made=F.testManifest('urn:uuid:made',[['c2pa.created','trainedAlgorithmicMedia']],[],{name:'DALL-E'});
+  const converted=F.testManifest('urn:uuid:converted',[['c2pa.converted']],[{manifest:'urn:uuid:made',relationship:'parentOf'}]);
+  assert.match(P.inspect(F.jpegWithStore(F.superbox('c2pa',[made,converted]))).reason,/earlier manifest .*\(generator: DALL-E\) records c2pa\.created with trainedAlgorithmicMedia, and it reaches this file as a parentOf ingredient/);
+});

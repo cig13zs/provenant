@@ -339,25 +339,38 @@
     return { digitalSourceTypes: [...new Set(values)], creatorTool: [...new Set(creators)].join(', ') };
   }
 
+  // Returns [verdict, reason]: the reason names the field that decided the verdict.
   function decide(signals) {
     const c = signals.find(s => s.source === 'c2pa'), x = signals.find(s => s.source === 'xmp');
     const cv = c && c.value || {}, xv = x && x.value || {};
     const ct = (cv.sourceTypes || []).map(term), xt = (xv.digitalSourceTypes || []).map(term);
     const ai = ts => ts.some(t => t === 'trainedAlgorithmicMedia' || t === 'compositeWithTrainedAlgorithmicMedia');
-    if ((ai(ct) && xt.includes('digitalCapture')) || (ai(xt) && ct.includes('digitalCapture'))) return 'conflict';
-    const own = (cv.actions || []).map(claimKind), inherited = cv.inherited || [];
-    const fromParent = i => i.kind === 'generated' && i.path.every(p => p.relationship === 'parentOf');
-    if (own.includes('generated') || xt.includes('trainedAlgorithmicMedia') || inherited.some(fromParent)) return 'ai_generated';
-    if (own.includes('edited') || xt.includes('compositeWithTrainedAlgorithmicMedia') || inherited.length) return 'ai_edited';
-    if (ct.includes('digitalCapture') && !ai(ct) && !ai(xt)) return 'camera_signed';
-    if (c && c.found) return 'credentials_no_ai_claim';
-    if (signals.some(s => s.source === 'meta' && s.found && s.aiHint)) return 'ai_hint';
-    return 'no_labels';
+    const by = cv.generator ? ' (generator: ' + cv.generator + ')' : '';
+    const named = list => list.map(t => (sourceNames[t] || t) + ' (' + t + ')').join(', ');
+    if (ai(ct) && xt.includes('digitalCapture')) return ['conflict', 'Content Credentials claim ' + named(ct.filter(t => ai([t]))) + ', but the XMP source type says camera (digitalCapture).'];
+    if (ai(xt) && ct.includes('digitalCapture')) return ['conflict', 'Content Credentials claim a camera capture (digitalCapture), but the XMP source type says ' + named(xt.filter(t => ai([t]))) + '.'];
+    const own = (cv.actions || []).filter(a => claimKind(a)), inherited = cv.inherited || [];
+    const fromParent = inherited.find(i => i.kind === 'generated' && i.path.every(p => p.relationship === 'parentOf'));
+    const ownGen = own.find(a => claimKind(a) === 'generated'), ownEdit = own.find(a => claimKind(a) === 'edited');
+    const earlier = i => 'An earlier manifest in this file\'s history' + (i.generator ? ' (generator: ' + i.generator + ')' : '') + ' records ' + i.action + ' with ' + term(i.digitalSourceType) + ', and it reaches this file as a ' + (i.path.map(p => p.relationship || 'ingredient').join(' of a ')) + ' ingredient.';
+    if (ownGen) return ['ai_generated', 'Content Credentials record ' + ownGen.action + ' with source type trainedAlgorithmicMedia' + by + '.'];
+    if (xt.includes('trainedAlgorithmicMedia')) return ['ai_generated', 'The IPTC/XMP Digital Source Type is trainedAlgorithmicMedia' + (xv.creatorTool ? ' (creator tool: ' + xv.creatorTool + ')' : '') + '. This label is not signed.'];
+    if (fromParent) return ['ai_generated', earlier(fromParent)];
+    if (ownEdit) return ['ai_edited', 'Content Credentials record ' + ownEdit.action + ' with source type ' + term(ownEdit.digitalSourceType) + by + '.'];
+    if (xt.includes('compositeWithTrainedAlgorithmicMedia')) return ['ai_edited', 'The IPTC/XMP Digital Source Type is compositeWithTrainedAlgorithmicMedia. This label is not signed.'];
+    if (inherited.length) return ['ai_edited', earlier(inherited[0])];
+    if (ct.includes('digitalCapture') && !ai(ct) && !ai(xt)) return ['camera_signed', 'Content Credentials record a camera capture (digitalCapture)' + (cv.signer && cv.signer.organization ? ', signed by ' + cv.signer.organization : '') + '. The signature and the camera are not verified here.'];
+    if (c && c.found) return ['credentials_no_ai_claim', c.value ? 'Content Credentials are present' + by + ', but none of their actions claim AI generation or AI editing.' : 'Content Credentials are present but could not be read, so what they claim is unknown.'];
+    const hint = signals.find(s => s.source === 'meta' && s.found && s.aiHint);
+    if (hint) return ['ai_hint', 'The ' + hint.id.split(':')[1].toUpperCase() + ' field "' + hint.id.split(':')[2] + '" names an AI tool or holds generation settings. Metadata like this is easy to add or remove, so it is a hint, not a label.'];
+    if (xt.length) return ['no_labels', 'The only source type is an unsigned IPTC/XMP value, ' + named(xt) + '. It makes no AI claim, and unsigned camera metadata is not treated as a camera label.'];
+    if (signals.some(s => s.source === 'meta' && s.found)) return ['no_labels', 'No Content Credentials or IPTC/XMP source type. The metadata found names no known AI tool.'];
+    return ['no_labels', 'No Content Credentials, IPTC/XMP source type or generator metadata were found.'];
   }
   function finish(filename, format, signals, notes) {
-    const verdict = decide(signals);
+    const [verdict, reason] = decide(signals);
     if (verdict === 'no_labels') notes.push(noLabels);
-    return { filename, format, verdict, headline: headlines[verdict], signals, notes, watermarkLinks: watermarkLinks.map(l => ({ ...l })), creatorNote: /^ai_(generated|edited|hint)$/.test(verdict) ? creatorNote.map(l => ({ ...l })) : [] };
+    return { filename, format, verdict, headline: headlines[verdict], reason, signals, notes, watermarkLinks: watermarkLinks.map(l => ({ ...l })), creatorNote: /^ai_(generated|edited|hint)$/.test(verdict) ? creatorNote.map(l => ({ ...l })) : [] };
   }
   function inspect(input, filename = '') {
     let b; try { b = input instanceof Uint8Array ? input : new Uint8Array(input); } catch (_) { b = new Uint8Array(); }
@@ -434,7 +447,7 @@
     }
     let value = null, detail = 'Content Credentials not found. Signature not checked here.';
     if (present) {
-      try { if (storeError) throw Error(storeError); if (!stores.length) throw Error('missing manifest bytes'); for (const store of stores) value = parseManifest(store); detail = (unsupported ? 'Content Credentials found but this file type is not fully parsed. ' : '') + 'Generator: ' + (value.generator || 'not specified') + '; signer organization: ' + (value.signer.organization || 'not specified') + '; signer CN: ' + (value.signer.commonName || 'not specified') + '; actions: ' + value.actions.map(a => a.action + (a.digitalSourceType ? ' (' + (sourceNames[term(a.digitalSourceType)] || term(a.digitalSourceType)) + ')' : '')).join(', ') + '; ingredients: ' + value.ingredients + inheritedText(value.inherited) + '. Signature not checked here.'; }
+      try { if (storeError) throw Error(storeError); if (!stores.length) throw Error('missing manifest bytes'); for (const store of stores) value = parseManifest(store); detail = (unsupported ? 'Content Credentials found but this file type is not fully parsed. ' : '') + 'Generator: ' + (value.generator || 'not specified') + '; signer organization: ' + (value.signer.organization || 'not specified') + '; signer CN: ' + (value.signer.commonName || 'not specified') + '; actions: ' + (value.actions.length ? '' : 'none') + value.actions.map(a => a.action + (a.digitalSourceType ? ' (' + (sourceNames[term(a.digitalSourceType)] || term(a.digitalSourceType)) + ')' : '')).join(', ') + '; ingredients: ' + value.ingredients + inheritedText(value.inherited) + '. Signature not checked here.'; }
       catch (e) { value = null; detail = (unsupported ? 'Content Credentials found but this file type is not fully parsed. ' : '') + 'Content Credentials present but could not be parsed: ' + e.message + '. Signature not checked here.'; }
     }
     const c = signal('c2pa', 'c2pa', present, value, detail); c.verifyUrl = 'https://contentcredentials.org/verify';

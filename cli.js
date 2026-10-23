@@ -16,6 +16,7 @@ function read(file) {
 function printReport(r) {
   console.log(r.filename + '\n' + (r.error || r.headline));
   if (r.error) return;
+  console.log('Why: ' + r.reason);
   for (const s of r.signals) console.log('  ' + s.source + ' [' + (s.found === null ? "can't check" : s.found ? 'found' : 'not found') + ']: ' + s.detail);
   const c = r.signals.find(s => s.source === 'c2pa');
   if (c.found) console.log('  Check signature: ' + c.verifyUrl);
