@@ -44,7 +44,7 @@ The CLI exits 0 after processing a request, including explicit per-file read err
 
 | Source | What the reader shows |
 |---|---|
-| C2PA Content Credentials | Active manifest's generator, signer organization and name, actions, digital source types and ingredient count. JPEG APP11 packets, PNG `caBX`, WebP `C2PA` and BMFF UUID stores in MP4/MOV/M4A/HEIC/HEIF/AVIF. Other embeddings get a limited raw scan. |
+| C2PA Content Credentials | Active manifest's generator, signer organization and name, actions, digital source types and ingredient count, plus AI claims made by the earlier manifests it names as ingredients (a ChatGPT image whose own manifest only says "converted" still shows the generator's "created" claim). JPEG APP11 packets, PNG `caBX`, WebP `C2PA` and BMFF UUID stores in MP4/MOV/M4A/HEIC/HEIF/AVIF. Other embeddings get a limited raw scan. |
 | IPTC/XMP | Digital Source Type and CreatorTool in an embedded XMP packet. AI-generated, AI-edited, computer-generated, camera and composite source terms stay distinct. |
 | Generator metadata | PNG text, compressed text and international text; EXIF Software and ImageDescription in JPEG, PNG and WebP. Values are shown up to 200 characters. Recognized tool names and generation keys are hints. |
 | Invisible watermarks | Always unknown here. Links to [SynthID Detector](https://synthid.com), [Gemini verification help](https://support.google.com/gemini/answer/16722517?hl=en) and [OpenAI's checker](https://openai.com/verify). These services receive a file only if you separately choose to upload it there. |

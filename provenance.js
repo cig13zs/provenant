@@ -159,25 +159,41 @@
     return out;
   }
   function flatten(nodes) { const out = []; for (const n of nodes) { out.push(n); out.push(...flatten(n.children)); } return out; }
-  function parseManifest(b) {
-    // Some writers pad the container after the store; the store box's own length wins.
-    if (b.length >= 8 && ascii(b, 4, 4) === 'jumb') { const n = u32(b, 0); if (n >= 8 && n < b.length) b = b.subarray(0, n); }
-    const tree = boxes(b), store = flatten(tree).find(n => n.type === 'jumb' && n.label === 'c2pa');
-    if (!store) throw Error('missing c2pa manifest store');
-    const manifests = store.children.filter(n => n.type === 'jumb');
-    const active = manifests[manifests.length - 1];
-    if (!active) throw Error('empty manifest store');
-    const nodes = flatten(active.children);
+  // 'generated', 'edited' or '' for one C2PA action. Opening an AI file is not itself a claim.
+  function claimKind(a) {
+    const t = term(a.digitalSourceType);
+    if (t === 'compositeWithTrainedAlgorithmicMedia') return 'edited';
+    if (t !== 'trainedAlgorithmicMedia' || a.action === 'c2pa.opened') return '';
+    return a.action === 'c2pa.created' ? 'generated' : 'edited';
+  }
+  function manifestRef(ref) {
+    const m = /jumbf=\/?c2pa\/([^/]+)/.exec(String(ref && typeof ref === 'object' ? ref.url : ref || ''));
+    return m ? m[1] : '';
+  }
+  function assertionData(assertion) {
+    const cb = assertion.children.find(n => n.type === 'cbor');
+    if (cb) return decodeCBOR(cb.data);
+    const js = assertion.children.find(n => n.type === 'json');
+    if (js) return JSON.parse(text(js.data));
+    return null;
+  }
+  function readClaim(manifest) {
+    const nodes = flatten(manifest.children);
     const claimBox = nodes.find(n => /^c2pa\.claim(?:\.v\d+)?$/.test(n.label));
     const payload = claimBox && claimBox.children.find(n => n.type === 'cbor');
     if (!payload) throw Error('missing claim CBOR');
     const claim = decodeCBOR(payload.data);
     const info = claim.claim_generator_info;
-    const names = (Array.isArray(info) ? info : info ? [info] : []).map(i => i.name).filter(Boolean);
-    const value = { manifest: active.label, generator: claim.claim_generator || names.join(', '), signer: { organization: '', commonName: '' }, signature: claim.signature || '', actions: [], ingredients: 0, sourceTypes: [] };
-    const assertions = active.children.find(n => n.label === 'c2pa.assertions');
+    const names = (Array.isArray(info) ? info : info ? [info] : []).map(i => i && i.name).filter(Boolean);
+    const value = { manifest: manifest.label, generator: claim.claim_generator || names.join(', '), signer: { organization: '', commonName: '' }, signature: claim.signature || '', actions: [], ingredients: 0, sourceTypes: [], links: [] };
+    const assertions = manifest.children.find(n => n.label === 'c2pa.assertions');
     for (const assertion of assertions ? assertions.children : []) {
-      if (/^c2pa\.ingredient(?:[._]|$)/.test(assertion.label)) value.ingredients++;
+      if (/^c2pa\.ingredient(?:[._]|$)/.test(assertion.label)) {
+        value.ingredients++;
+        let data = null; try { data = assertionData(assertion); } catch (_) { /* a broken ingredient only loses its link */ }
+        const ref = data && manifestRef(data.active_manifest || data.activeManifest || data.c2pa_manifest);
+        if (ref) value.links.push({ manifest: ref, relationship: String(data.relationship || ''), title: String(data['dc:title'] || '') });
+      }
       if (/^c2pa\.actions(?:\.v2)?(?:__\d+)?$/.test(assertion.label)) {
         const cb = assertion.children.find(n => n.type === 'cbor');
         if (!cb) throw Error('missing actions CBOR');
@@ -186,6 +202,43 @@
       }
     }
     value.sourceTypes = [...new Set(value.actions.map(a => a.digitalSourceType).filter(Boolean))];
+    return value;
+  }
+  // AI claims made by earlier manifests that the active one names as ingredients.
+  function inheritedClaims(manifests, active) {
+    const byLabel = new Map(manifests.map(m => [m.label, m])), seen = new Set([active.manifest]), out = [];
+    (function walk(links, via) {
+      for (const link of links) {
+        if (seen.has(link.manifest) || !byLabel.has(link.manifest) || via.length >= 16) continue;
+        seen.add(link.manifest);
+        let m; try { m = readClaim(byLabel.get(link.manifest)); } catch (_) { continue; }
+        const path = [...via, { relationship: link.relationship, title: link.title }];
+        for (const a of m.actions) { const kind = claimKind(a); if (kind) out.push({ kind, manifest: m.manifest, generator: m.generator, action: a.action, digitalSourceType: a.digitalSourceType, path }); }
+        walk(m.links, path);
+      }
+    })(active.links, []);
+    return out;
+  }
+  function inheritedText(list) {
+    if (!list.length) return '';
+    const seen = new Set(), parts = [];
+    for (const i of list) {
+      const s = (i.generator || 'unnamed tool') + ' (' + i.action + ', ' + (sourceNames[term(i.digitalSourceType)] || term(i.digitalSourceType)) + ') via ' + i.path.map(p => (p.relationship || 'ingredient') + (p.title ? ' "' + p.title + '"' : '')).join(' > ');
+      if (!seen.has(s)) { seen.add(s); parts.push(s); }
+    }
+    return '; AI claims in ingredient manifests: ' + parts.slice(0, 3).join('; ') + (parts.length > 3 ? '; and ' + (parts.length - 3) + ' more' : '');
+  }
+  function parseManifest(b) {
+    // Some writers pad the container after the store; the store box's own length wins.
+    if (b.length >= 8 && ascii(b, 4, 4) === 'jumb') { const n = u32(b, 0); if (n >= 8 && n < b.length) b = b.subarray(0, n); }
+    const tree = boxes(b), store = flatten(tree).find(n => n.type === 'jumb' && n.label === 'c2pa');
+    if (!store) throw Error('missing c2pa manifest store');
+    const manifests = store.children.filter(n => n.type === 'jumb');
+    const active = manifests[manifests.length - 1];
+    if (!active) throw Error('empty manifest store');
+    const value = readClaim(active);
+    value.inherited = inheritedClaims(manifests, value);
+    delete value.links;
     const sigLabel = String(value.signature).split('/').pop();
     const sigBox = active.children.find(n => n.label === sigLabel) || active.children.find(n => n.label === 'c2pa.signature');
     if (!sigBox) throw Error('missing signature box');
@@ -292,8 +345,10 @@
     const ct = (cv.sourceTypes || []).map(term), xt = (xv.digitalSourceTypes || []).map(term);
     const ai = ts => ts.some(t => t === 'trainedAlgorithmicMedia' || t === 'compositeWithTrainedAlgorithmicMedia');
     if ((ai(ct) && xt.includes('digitalCapture')) || (ai(xt) && ct.includes('digitalCapture'))) return 'conflict';
-    if ((cv.actions || []).some(a => a.action === 'c2pa.created' && term(a.digitalSourceType) === 'trainedAlgorithmicMedia') || xt.includes('trainedAlgorithmicMedia')) return 'ai_generated';
-    if (ct.includes('compositeWithTrainedAlgorithmicMedia') || xt.includes('compositeWithTrainedAlgorithmicMedia')) return 'ai_edited';
+    const own = (cv.actions || []).map(claimKind), inherited = cv.inherited || [];
+    const fromParent = i => i.kind === 'generated' && i.path.every(p => p.relationship === 'parentOf');
+    if (own.includes('generated') || xt.includes('trainedAlgorithmicMedia') || inherited.some(fromParent)) return 'ai_generated';
+    if (own.includes('edited') || xt.includes('compositeWithTrainedAlgorithmicMedia') || inherited.length) return 'ai_edited';
     if (ct.includes('digitalCapture') && !ai(ct) && !ai(xt)) return 'camera_signed';
     if (c && c.found) return 'credentials_no_ai_claim';
     if (signals.some(s => s.source === 'meta' && s.found && s.aiHint)) return 'ai_hint';
@@ -379,7 +434,7 @@
     }
     let value = null, detail = 'Content Credentials not found. Signature not checked here.';
     if (present) {
-      try { if (storeError) throw Error(storeError); if (!stores.length) throw Error('missing manifest bytes'); for (const store of stores) value = parseManifest(store); detail = (unsupported ? 'Content Credentials found but this file type is not fully parsed. ' : '') + 'Generator: ' + (value.generator || 'not specified') + '; signer organization: ' + (value.signer.organization || 'not specified') + '; signer CN: ' + (value.signer.commonName || 'not specified') + '; actions: ' + value.actions.map(a => a.action + (a.digitalSourceType ? ' (' + (sourceNames[term(a.digitalSourceType)] || term(a.digitalSourceType)) + ')' : '')).join(', ') + '; ingredients: ' + value.ingredients + '. Signature not checked here.'; }
+      try { if (storeError) throw Error(storeError); if (!stores.length) throw Error('missing manifest bytes'); for (const store of stores) value = parseManifest(store); detail = (unsupported ? 'Content Credentials found but this file type is not fully parsed. ' : '') + 'Generator: ' + (value.generator || 'not specified') + '; signer organization: ' + (value.signer.organization || 'not specified') + '; signer CN: ' + (value.signer.commonName || 'not specified') + '; actions: ' + value.actions.map(a => a.action + (a.digitalSourceType ? ' (' + (sourceNames[term(a.digitalSourceType)] || term(a.digitalSourceType)) + ')' : '')).join(', ') + '; ingredients: ' + value.ingredients + inheritedText(value.inherited) + '. Signature not checked here.'; }
       catch (e) { value = null; detail = (unsupported ? 'Content Credentials found but this file type is not fully parsed. ' : '') + 'Content Credentials present but could not be parsed: ' + e.message + '. Signature not checked here.'; }
     }
     const c = signal('c2pa', 'c2pa', present, value, detail); c.verifyUrl = 'https://contentcredentials.org/verify';

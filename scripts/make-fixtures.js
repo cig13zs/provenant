@@ -41,11 +41,15 @@ function cbor(v) {
   const entries=Object.entries(v);return Buffer.concat([head(5,entries.length),...entries.flatMap(([k,v])=>[cbor(k),cbor(v)])]);
 }
 function superbox(label, children) { return box('jumb',Buffer.concat([box('jumd',Buffer.concat([Buffer.alloc(16),Buffer.from([3]),Buffer.from(label+'\0')])),...children])); }
-function testStore(sourceType, action='c2pa.created', info={name:'Fixture Tool'}) {
-  const assertions=superbox('c2pa.assertions',[superbox('c2pa.actions.v2',[box('cbor',cbor({actions:[{action,digitalSourceType:uri(sourceType)}]}))])]);
+function testManifest(label, actions, ingredients=[], info={name:'Fixture Tool'}) {
+  const ing=ingredients.map((g,i)=>superbox((g.key==='c2pa_manifest'?'c2pa.ingredient':'c2pa.ingredient.v3')+(i?'__'+i:''),[box('cbor',cbor({'dc:title':g.title||'',relationship:g.relationship,[g.key||'active_manifest']:{url:'self#jumbf=/c2pa/'+g.manifest,alg:'sha256'}}))]));
+  const assertions=superbox('c2pa.assertions',[...ing,superbox('c2pa.actions.v2',[box('cbor',cbor({actions:actions.map(([action,t])=>t?{action,digitalSourceType:uri(t)}:{action})}))])]);
   const claim=superbox('c2pa.claim.v2',[box('cbor',cbor({claim_generator_info:info,signature:'self#jumbf=c2pa.signature'}))]);
   const signature=superbox('c2pa.signature',[box('cbor',cbor([Buffer.alloc(0),{},null,Buffer.alloc(0)]))]);
-  return superbox('c2pa',[superbox('urn:uuid:fixture',[assertions,claim,signature])]);
+  return superbox(label,[assertions,claim,signature]);
+}
+function testStore(sourceType, action='c2pa.created', info={name:'Fixture Tool'}) {
+  return superbox('c2pa',[testManifest('urn:uuid:fixture',[[action,sourceType]],[],info)]);
 }
 function jpegWithStore(store) { const h=Buffer.alloc(8);h.write('JP');h.writeUInt16BE(1,2);h.writeUInt32BE(1,4);const j=plainJpeg();return Buffer.concat([j.subarray(0,2),segment(235,Buffer.concat([h,store])),j.subarray(2)]); }
 function generate() {
@@ -62,4 +66,4 @@ function generate() {
   console.log('Generated '+Object.keys(fixtures).length+' deterministic fixtures.');
 }
 if (require.main === module) generate();
-module.exports={plainJpeg,segment,png,chunk,withXmp,stripApp11,jpegStore,box,cbor,superbox,testStore,jpegWithStore};
+module.exports={plainJpeg,segment,png,chunk,withXmp,stripApp11,jpegStore,box,cbor,superbox,testManifest,testStore,jpegWithStore};
