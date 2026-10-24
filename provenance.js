@@ -160,6 +160,8 @@
   }
   function flatten(nodes) { const out = []; for (const n of nodes) { out.push(n); out.push(...flatten(n.children)); } return out; }
   function parseManifest(b) {
+    // Some writers pad the container after the store; the store box's own length wins.
+    if (b.length >= 8 && ascii(b, 4, 4) === 'jumb') { const n = u32(b, 0); if (n >= 8 && n < b.length) b = b.subarray(0, n); }
     const tree = boxes(b), store = flatten(tree).find(n => n.type === 'jumb' && n.label === 'c2pa');
     if (!store) throw Error('missing c2pa manifest store');
     const manifests = store.children.filter(n => n.type === 'jumb');

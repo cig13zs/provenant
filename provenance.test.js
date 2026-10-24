@@ -99,6 +99,14 @@ test('WebP and BMFF UUID embeddings, extended boxes, raw fallback',()=>{
   for(const file of ['a.mp4','a.mov','a.m4a','a.heic','a.heif','a.avif'])assert.equal(source(P.inspect(Buffer.concat([ftyp,extended,data]),file),'c2pa').value.generator,'make_test_images/0.33.1 c2pa-rs/0.33.1');
   const raw=source(P.inspect(Buffer.concat([Buffer.from('prefix'),store])),'c2pa');assert.equal(raw.found,true);assert.match(raw.detail,/file type is not fully parsed/);
 });
+test('padding after the manifest store inside its container is ignored',()=>{
+  const store=F.jpegStore(read('C.jpg')), pad=Buffer.alloc(3);
+  const uuid=Buffer.from('d8fec3d61b0e483c92975828877ec481','hex'), data=Buffer.concat([uuid,Buffer.alloc(4),Buffer.from('manifest\0'),Buffer.alloc(8),store,pad]);
+  const mp4=Buffer.concat([F.box('ftyp',Buffer.from('mp420000')),F.box('uuid',data)]);
+  assert.equal(source(P.inspect(mp4,'a.mp4'),'c2pa').value.signer.organization,'C2PA Test Signing Cert');
+  const padded=Buffer.concat([store,pad]),ch=Buffer.alloc(8);ch.write('C2PA');ch.writeUInt32LE(padded.length,4);const riff=Buffer.alloc(12);riff.write('RIFF');riff.writeUInt32LE(4+8+padded.length+(padded.length&1),4);riff.write('WEBP',8);
+  assert.equal(source(P.inspect(Buffer.concat([riff,ch,padded,Buffer.alloc(padded.length&1)])),'c2pa').value.generator,'make_test_images/0.33.1 c2pa-rs/0.33.1');
+});
 test('inflates stored, fixed and dynamic zlib blocks without runtime dependencies',()=>{
   const raw=Buffer.from('Stable Diffusion '.repeat(1000)+'text 1234567890 '.repeat(333));
   for(const options of [{level:0},{strategy:zlib.constants.Z_FIXED},{level:9}])assert.deepEqual(Buffer.from(P.inflateZlib(zlib.deflateSync(raw,options))),raw);
